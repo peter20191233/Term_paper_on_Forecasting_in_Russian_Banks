@@ -1,0 +1,112 @@
+library(readxl)
+dd <- read_excel("BSPB_monthly.xlsx")
+
+ts_dd <- ts(dd[,-1], start = c(2015,1), frequency = 12)
+ts.plot(ts_dd)
+
+ts_dd_log <- diff(log(ts_dd))
+ts.plot(ts_dd_log)
+
+train <- ts_dd_log[1:99]
+test <- ts_dd_log[100:122]
+
+library(forecast)
+library(stats)
+summary(ur.df(train, type="none", lags = 24, selectlags ="BIC"))
+auto.arima(train, stepwise = TRUE, approximation = TRUE, seasonal = TRUE)
+
+mod_arima1 <- arima(train, order = c(1,0,1))
+summary(mod_arima1)
+
+p0 <- fitted(mod_arima1)
+ts.plot(train, p0, col=c("black", "royalblue"), main= "ARIMA forecast 2015-2023")
+
+
+p1 <- predict(mod_arima1, n.ahead=NROW(test))
+ts.plot(test, p1$pred, col=c("black", "blue"), main= "ARIMA forecast 2024-2025")
+
+mrse1 <- sqrt(mean((test-p1$pred)^2))
+mrse1
+
+smape <- function(actual, predicted) {
+  mean(200 * abs(predicted - actual) / (abs(actual) + abs(predicted)))
+}
+
+smape(test,p1$pred)
+
+
+library(fGarch)
+mod_garch1 <- garchFit(~ arma(1,0) + garch(1,1), data = train)
+summary(mod_garch1)
+
+p02 <- fitted(mod_garch1)
+train <- as.ts(train)
+ts.plot(train, p02, col=c("black", "red"), main="GARCH fcst 2015-2023")
+
+p2 <- predict(mod_garch1, n.ahead=NROW(test))
+p2 <- as.ts(p2$meanForecast)
+ts.plot(test, p2, col=c("black", "red"), main= "GARCH fcst 2024-2025")
+mrse2 <- sqrt(mean((test-p2)^2))
+mrse2
+
+smape(test,p2)
+
+library(prophet)
+library(tidyverse)
+library(lubridate)
+
+data_p <- data.frame(ds=dd$Date, y=dd$BSPS)
+
+train2 <- data_p[1:99,]
+test2 <- data_p[100:123,]
+
+tail(train2$ds)
+
+m=prophet(train2, yearly.seasonality = TRUE) 
+summary(m)
+
+n <- NROW(test2)
+
+future <- make_future_dataframe(m, periods = n, freq="month", include_history = T)
+tail(future)
+
+forecast <- predict(m, future)
+summary(forecast)
+
+test2 <- as.ts(test2$y)
+
+plot(m, forecast)
+p3 <- forecast$yhat[100:123]
+smape(test2, p3)
+
+ts.plot(test2, p3, col = c("black", "blue"), main= "Prophet fcst 2024-2025")
+
+###########################################################
+
+dd1 <- ts(dd$BSPS, start=c(2015,1), frequency = 12)
+dd_dl <- diff(log(dd1))
+
+data_p <- data.frame(ds=dd$Date[-1], y=dd_dl)
+
+train2 <- data_p[1:99,]
+test2 <- data_p[100:122,]
+tail(train2)
+
+m2=prophet(train2, yearly.seasonality = TRUE) 
+summary(m2)
+
+n <- NROW(test2)
+
+future <- make_future_dataframe(m2, periods = n, freq="month", include_history = T)
+tail(future)
+
+forecast <- predict(m2, future)
+summary(forecast)
+
+test2 <- as.ts(test2$y)
+
+plot(m2, forecast)
+p4 <- forecast$yhat[100:122]
+smape(test2, p4)
+
+ts.plot(test2, p4, col = c("black", "blue"), main= "Prophet fcst 2024-2025")
